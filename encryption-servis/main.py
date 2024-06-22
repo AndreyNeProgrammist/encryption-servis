@@ -6,15 +6,20 @@ from datetime import datetime
 app = Flask(__name__)
 api = Api(app)
 
+# Определение поддерживаемого алфавита для шифров
 ALPHABET = " ,.:(_)-0123456789АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
 
-# In-memory storage
+# Хранение данных в памяти для пользователей, методов и сессий
 users = []
 methods = []
 sessions = []
 
-# Helper functions
+# Вспомогательные функции
+
 def vigenere_cipher(text, key, encrypt=True):
+    """
+    Функция шифрования/дешифрования с использованием шифра Виженера.
+    """
     text = text.upper()
     key = key.upper()
     result = []
@@ -30,6 +35,9 @@ def vigenere_cipher(text, key, encrypt=True):
     return ''.join(result)
 
 def caesar_cipher(text, shift, encrypt=True):
+    """
+    Функция шифрования/дешифрования с использованием шифра Цезаря.
+    """
     shift = int(shift)
     if not encrypt:
         shift = -shift
@@ -43,66 +51,88 @@ def caesar_cipher(text, shift, encrypt=True):
     return ''.join(result)
 
 def find_user(login):
+    """
+    Найти пользователя по логину.
+    """
     return next((user for user in users if user['login'] == login), None)
 
 def find_method(method_id):
+    """
+    Найти метод по его ID.
+    """
     return next((method for method in methods if method['id'] == method_id), None)
 
 def find_session(session_id):
+    """
+    Найти сессию по ее ID.
+    """
     return next((session for session in sessions if session['id'] == session_id), None)
 
-# API Resources
+# Ресурсы API
+
 class UserResource(Resource):
     def post(self):
+        """
+        Создать нового пользователя.
+        """
         data = request.get_json()
         login = data.get('login').upper()
         secret = data.get('secret')
-        if not (3 <= len(login) <= 10 and 3 <= len(secret) <= 10):
-            return {"message": "Login and secret must be between 3 and 10 characters"}, 400
+        if not (3 <= len(login) <= 10 и 3 <= len(secret) <= 10):
+            return {"message": "Логин и секрет должны быть от 3 до 10 символов"}, 400
         if find_user(login):
-            return {"message": "User already exists"}, 400
+            return {"message": "Пользователь уже существует"}, 400
         user = {'login': login, 'secret': secret}
         users.append(user)
-        return {"message": "User created successfully"}, 201
+        return {"message": "Пользователь успешно создан"}, 201
 
     def get(self):
+        """
+        Получить список всех пользователей.
+        """
         return [{'login': user['login']} for user in users], 200
 
 class MethodResource(Resource):
     def get(self):
+        """
+        Получить список всех методов.
+        """
         return methods, 200
 
 class SessionResource(Resource):
     def post(self):
+        """
+        Создать новую сессию для шифрования/дешифрования.
+        """
         data = request.get_json()
         user_login = data.get('user_login').upper()
         user = find_user(user_login)
-        if not user or user['secret'] != data.get('secret'):
-            return {"message": "Invalid user login or secret"}, 400
+        if not user или user['secret'] != data.get('secret'):
+            return {"message": "Неверный логин пользователя или секрет"}, 400
         
         method_id = data.get('method_id')
         method = find_method(method_id)
         if not method:
-            return {"message": "Invalid method ID"}, 400
+            return {"message": "Неверный ID метода"}, 400
         
         text = data.get('text', '').upper()
         params = data.get('params', {})
         action = data.get('action', 'encrypt')
         
         if action not in ['encrypt', 'decrypt']:
-            return {"message": "Invalid action. Must be 'encrypt' or 'decrypt'"}, 400
+            return {"message": "Неверное действие. Должно быть 'encrypt' или 'decrypt'"}, 400
         
         start_time = time.time()
         if method_id == 1:
             key = params.get('key', '').upper()
             if not key:
-                return {"message": "Key parameter is required for Vigenere cipher"}, 400
+                return {"message": "Параметр 'key' обязателен для шифра Виженера"}, 400
             result_text = vigenere_cipher(text, key, encrypt=(action == 'encrypt'))
         elif method_id == 2:
             shift = params.get('shift', 0)
             result_text = caesar_cipher(text, shift, encrypt=(action == 'encrypt'))
         else:
-            return {"message": "Unknown method"}, 400
+            return {"message": "Неизвестный метод"}, 400
         
         end_time = time.time()
         session = {
@@ -120,44 +150,53 @@ class SessionResource(Resource):
         return session, 201
 
     def get(self, session_id):
+        """
+        Получить сессию по ее ID.
+        """
         session = find_session(session_id)
         if not session:
-            return {"message": "Session not found"}, 404
+            return {"message": "Сессия не найдена"}, 404
         return session, 200
 
     def delete(self, session_id):
+        """
+        Удалить сессию по ее ID.
+        """
         data = request.get_json()
         secret = data.get('secret')
         session = find_session(session_id)
         if not session:
-            return {"message": "Session not found"}, 404
+            return {"message": "Сессия не найдена"}, 404
         
         user = find_user(session['user_id'])
         if user['secret'] != secret:
-            return {"message": "Invalid secret"}, 400
+            return {"message": "Неверный секрет"}, 400
         
         sessions.remove(session)
-        return {"message": "Session deleted"}, 200
+        return {"message": "Сессия удалена"}, 200
 
 class AllSessionsResource(Resource):
     def get(self):
+        """
+        Получить список всех сессий.
+        """
         return sessions, 200
 
-# Seed methods
+# Инициализация методов
 methods.append({
     'id': 1,
     'caption': 'Vigenere Cipher',
     'json_params': {'key': 'string'},
-    'description': 'A method of encrypting alphabetic text by using a series of different Caesar ciphers based on the letters of a keyword.'
+    'description': 'Метод шифрования алфавитного текста с использованием ряда различных шифров Цезаря на основе букв ключевого слова.'
 })
 methods.append({
     'id': 2,
     'caption': 'Caesar Cipher',
     'json_params': {'shift': 'int'},
-    'description': 'A substitution cipher where each letter in the plaintext is shifted a certain number of places down the alphabet.'
+    'description': 'Метод подстановочного шифра, где каждая буква в открытом тексте сдвигается на определенное количество позиций вниз по алфавиту.'
 })
 
-# API Endpoints
+# Конечные точки API
 api.add_resource(UserResource, '/users')
 api.add_resource(MethodResource, '/methods')
 api.add_resource(SessionResource, '/sessions', '/sessions/<int:session_id>')
